@@ -1021,24 +1021,6 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Link(iTVPFunctionExporter *
 	return S_OK;
 }
 //---------------------------------------------------------------------------
-static void TJS_USERENTRY tryUnlinkScripts(void *data)
-{
-  tTJSVariant varScripts;
-  TVPExecuteExpression(TJS_W("Scripts"), &varScripts);
-  iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
-  if (dispatch) {
-    delMethod(dispatch, L"evalJSON");
-    delMethod(dispatch, L"evalJSONStorage");
-    delMethod(dispatch, L"saveJSON");
-    delMethod(dispatch, L"toJSONString");
-  }
-}
-
-static bool TJS_USERENTRY catchUnlinkScripts(void *data, const tTVPExceptionDesc & desc) {
-  return false;
-}
-
-
 extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
 {
 	// 吉里吉里側から、プラグインを解放しようとするときに呼ばれる関数。
@@ -1050,10 +1032,24 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
 	if(TVPPluginGlobalRefCount > GlobalRefCountAtInit) return E_FAIL;
 	// E_FAIL が帰ると、Plugins.unlink メソッドは偽を返す
 
+	iTJSDispatch2 *globalDispatch = TVPGetScriptDispatch();
+	if (globalDispatch)
 	{
-          TVPDoTryBlock(&tryUnlinkScripts, &catchUnlinkScripts, NULL, NULL);
+		tTJSVariant varGlobal(globalDispatch);
+		globalDispatch->Release();
+		tTJSVariantClosure cloGlobal = varGlobal.AsObjectClosureNoAddRef();
+		tTJSVariant varScripts;
+		cloGlobal.PropGet(TJS_MEMBERMUSTEXIST, TJS_W("Scripts"), NULL, &varScripts, NULL);
+		tTJSVariantClosure cloScripts = varScripts.AsObjectClosureNoAddRef();
+		if (cloScripts.Object)
+		{
+			delMethod(cloScripts.Object, L"evalJSON");
+			delMethod(cloScripts.Object, L"evalJSONStorage");
+			delMethod(cloScripts.Object, L"saveJSON");
+			delMethod(cloScripts.Object, L"toJSONString");
+		}
 	}
-	
+
 	if (ArrayCountProp) {
 		ArrayCountProp->Release();
 		ArrayCountProp = NULL;
