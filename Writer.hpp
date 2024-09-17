@@ -1,5 +1,5 @@
 /**
- * o—Íˆ——pƒCƒ“ƒ^[ƒtƒF[ƒX
+ * å‡ºåŠ›å‡¦ç†ç”¨ã‚¤ãƒ³ã‚¿ãƒ¼ãƒ•ã‚§ãƒ¼ã‚¹
  */
 class IWriter {
 protected:
@@ -12,10 +12,10 @@ public:
                 hex = false;
 		switch (newlinetype) {
 		case 1:
-			newlinestr = L"\n";
+			newlinestr = TJS_W("\n");
 			break;
 		default:
-			newlinestr  = L"\r\n";
+			newlinestr  = TJS_W("\r\n");
 			break;
 		}
 	}
@@ -44,14 +44,14 @@ public:
 };
 
 /**
- * •¶Žš—ño—Í
+ * æ–‡å­—åˆ—å‡ºåŠ›
  */
 class IStringWriter : public IWriter {
 
 public:
 	ttstr buf;
 	/**
-	 * ƒRƒ“ƒXƒgƒ‰ƒNƒ^
+	 * ã‚³ãƒ³ã‚¹ãƒˆãƒ©ã‚¯ã‚¿
 	 */
 	IStringWriter(int newlinetype=0) : IWriter(newlinetype) {};
 
@@ -68,11 +68,11 @@ public:
                  tTJSVariantString *str = TJSRealToHexString(num);
                  buf += str;
                  str->Release();
-                 buf += L" /* ";
+                 buf += TJS_W(" /* ");
                  str = TJSRealToString(num);
                  buf += str;
                  str->Release();
-                 buf += L" */";
+                 buf += TJS_W(" */");
                } else {
                  tTJSVariantString *str = TJSRealToString(num);
                  buf += str;
@@ -88,14 +88,14 @@ public:
 };
 
 /**
- * ƒtƒ@ƒCƒ‹o—Í
+ * ãƒ•ã‚¡ã‚¤ãƒ«å‡ºåŠ›
  */
 class IFileWriter : public IWriter {
 
-	/// o—Íƒoƒbƒtƒ@
+	/// å‡ºåŠ›ãƒãƒƒãƒ•ã‚¡
 	ttstr buf;
-	/// o—ÍƒXƒgƒŠ[ƒ€
-	IStream *stream;
+	/// å‡ºåŠ›ã‚¹ãƒˆãƒªãƒ¼ãƒ 
+	iTJSBinaryStream *stream;
 	bool utf;
 	char *dat;
 	int datlen;
@@ -103,25 +103,25 @@ class IFileWriter : public IWriter {
 public:
 
 	/**
-	 * ƒRƒ“ƒXƒgƒ‰ƒNƒ^
+	 * ã‚³ãƒ³ã‚¹ãƒˆãƒ©ã‚¯ã‚¿
 	 */
 	IFileWriter(const tjs_char *filename, bool utf=false, int newlinetype=0) : IWriter(newlinetype) {
-		stream = TVPCreateIStream(filename, TJS_BS_WRITE);
+		stream = TVPCreateBinaryStreamInterfaceForWrite(filename, "");
 		this->utf = utf;
 		dat = NULL;
 		datlen = 0;
 	}
 
 	/**
-	 * ƒfƒXƒgƒ‰ƒNƒ^
+	 * ãƒ‡ã‚¹ãƒˆãƒ©ã‚¯ã‚¿
 	 */
 	~IFileWriter() {
 		if (stream) {
 			if (buf.length() > 0) {
 				output();
 			}
-			stream->Commit(STGC_DEFAULT);
-			stream->Release();
+			//stream->Commit(STGC_DEFAULT);
+			stream->Destruct();
 		}
 		if (dat) {
 			free(dat);
@@ -132,7 +132,7 @@ public:
 		if (stream) {
 			ULONG s;
 			if (utf) {
-				// UTF-8 ‚Åo—Í
+				// UTF-8 ã§å‡ºåŠ›
 				int maxlen = buf.length() * 6 + 1;
 				if (maxlen > datlen) {
 					datlen = maxlen;
@@ -140,10 +140,10 @@ public:
 				}
 				if (dat != NULL) {
 					int len = TVPWideCharToUtf8String(buf.c_str(), dat);
-					stream->Write(dat, len, &s);
+					s = stream->Write(dat, len);
 				}
 			} else {
-				// Œ»Ý‚ÌƒR[ƒhƒy[ƒW‚Åo—Í
+				// ç¾åœ¨ã®ã‚³ãƒ¼ãƒ‰ãƒšãƒ¼ã‚¸ã§å‡ºåŠ›
 				int len = buf.GetNarrowStrLen() + 1;
 				if (len > datlen) {
 					datlen = len;
@@ -151,7 +151,7 @@ public:
 				}
 				if (dat != NULL) {
 					buf.ToNarrowStr(dat, len-1);
-					stream->Write(dat, len-1, &s);
+					s = stream->Write(dat, len-1);
 				}
 			}
 		}
@@ -176,11 +176,11 @@ public:
                  tTJSVariantString *str = TJSRealToHexString(num);
                  buf += str;
                  str->Release();
-                 buf += L" /* ";
+                 buf += TJS_W(" /* ");
                  str = TJSRealToString(num);
                  buf += str;
                  str->Release();
-                 buf += L" */";
+                 buf += TJS_W(" */");
                } else {
                  tTJSVariantString *str = TJSRealToString(num);
                  buf += str;
