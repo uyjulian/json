@@ -2,7 +2,14 @@
  * copyright (c) 2007 Go Watanabe
  */
 
+#ifndef NO_V2LINK
 #include <windows.h>
+#else
+typedef unsigned long ULONG;
+
+#endif
+
+
 #include "tp_stub.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,33 +20,37 @@ using namespace std;
 
 #define UNICODE_BOM (0xfeff)
 
-/**
- * ログ出力用
- */
-static void log(const tjs_char *format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	tjs_char msg[1024];
-	_vsnwprintf(msg, 1024, format, args);
-	TVPAddLog(msg);
-	va_end(args);
-}
-
 // ----------------------------------------------------------------------
 
 class IFileStorage  {
 
+#if 1
 	IStream *in;
+#else
+	iTJSBinaryStream *in;
+#endif
 	char buf[8192];
 	ULONG pos;
 	ULONG len;
 	bool eofFlag;
+#if 1
 	int codepage;
+#else
+	bool utf8;
+#endif
 	
 public:
-	IFileStorage(tTJSVariantString *filename, int codepage) : codepage(codepage) {
+#if 1
+	IFileStorage(tTJSVariantString *filename, int codepage) : codepage(codepage)
+#else
+	IFileStorage(tTJSVariantString *filename, bool utf8) : utf8(utf8)
+#endif
+	{
+#if 1
 		in = TVPCreateIStream(filename, TJS_BS_READ);
+#else
+		in = TVPCreateBinaryStreamInterfaceForRead(filename, "");
+#endif
 		if(!in) {
 			TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + *filename).c_str());
 		}
@@ -50,7 +61,11 @@ public:
 
 	~IFileStorage() {
 		if (in) {
+#if 1
 			in->Release();
+#else
+			in->Destruct();
+#endif
 			in = NULL;
 		}
 	}
@@ -63,7 +78,12 @@ public:
 				return EOF;
 			} else {
 				pos = 0;
-				if (in->Read(buf, sizeof buf, &len) == S_OK) {
+#if 1
+				if (in->Read(buf, sizeof buf, &len) == S_OK)
+#else
+				if ((len = in->Read(buf, sizeof buf)) > 0)
+#endif
+				{
 					eofFlag = len < sizeof buf;
 				} else {
 					eofFlag = true;
@@ -106,14 +126,26 @@ public:
 		}
 		int l = (int)mbline.length();
 		if (l > 0 || c != EOF) {
+#if 1
 			wchar_t *buf = new wchar_t[l + 1];
 			l = MultiByteToWideChar(codepage, 0,
 									mbline.data(),
 									(int)mbline.length(),
 									buf, l);
-			buf[l] = '\0';
-			str += buf;
+				buf[l] = '\0';
+				str += buf;
 			delete buf;
+#else
+			if (utf8) {
+				tjs_char *buf = new tjs_char[l + 1];
+				l = TVPUtf8ToWideCharString(mbline.data(), buf);
+				buf[l] = '\0';
+				str += buf;
+				delete[] buf;
+			} else {
+				str += tTJSString(mbline.c_str());
+			}
+#endif
 			return true;
 		} else {
 			return false;
@@ -190,7 +222,7 @@ public:
 	 */
 	void error(const tjs_char *msg) {
 		isError = true;
-		log(msg);
+		TVPAddLog(msg);
 	}
 	
 	/**
@@ -220,7 +252,7 @@ public:
 					for (;;) {
 						c = getc();
 						if (c == EOF) {
-							error(L"コメントが閉じていません");
+							error(TJS_W("コメントが閉じていません"));
 							return EOF;
                         }
                         if (c == '*') {
@@ -257,7 +289,21 @@ public:
 			n--;
 		}
 	}
-	
+
+#if 0
+    void next(tjs_string &str, int n) {
+		str = TJS_W("");
+		while (n > 0) {
+			int c = getc();
+			if (c == EOF) {
+				break;
+			}
+			str += c;
+			n--;
+		}
+	}
+#endif
+
     void parseObject(tTJSVariant &var) {
 
         // 辞書を生成
@@ -273,7 +319,7 @@ public:
 
             c = next();
 			if (c == EOF) {
-				error(L"オブジェクトは '}' で終了する必要があります");
+				error(TJS_W("オブジェクトは '}' で終了する必要があります"));
 				return;
 			} else if (c == '}') {
 				return;
@@ -290,7 +336,7 @@ public:
 						ungetc();
 					}
 				} else if (c != ':') {
-					error(L"キーの後には ':' または '=' または '=>' が必要です");
+					error(TJS_W("キーの後には ':' または '=' または '=>' が必要です"));
 					return;
 				}
 
@@ -308,7 +354,7 @@ public:
 			case '}':
 				return;
 			default:
-				error(L" ',' または ';' または '}' が必要です");
+				error(TJS_W(" ',' または ';' または '}' が必要です"));
 				return;
 			}
         }
@@ -327,7 +373,7 @@ public:
             int ch = next();
 			switch (ch) {
 			case EOF:
-				error(L"配列は ']' で終了する必要があります");
+				error(TJS_W("配列は ']' で終了する必要があります"));
 				return;
 			case ']':
 				return;
@@ -354,7 +400,7 @@ public:
             case ']':
                 return;
             default:
-				error(L" ',' または ';' または ']' が必要です");
+				error(TJS_W(" ',' または ';' または ']' が必要です"));
                 return;
             }
         }
@@ -374,7 +420,7 @@ public:
 			case 0:
 			case '\n':
 			case '\r':
-				error(L"文字列が終端していません");
+				error(TJS_W("文字列が終端していません"));
 				return;
 			case '\\':
 				c = getc();
@@ -396,16 +442,32 @@ public:
 					break;
 				case 'u':
 					{
+#if 1
 						ttstr work;
 						next(work, 4);
 						str += (tjs_char)wcstol(work.c_str(), NULL, 16);
+#else
+						tjs_string work;
+						next(work, 4);
+						std::string out;
+						TVPUtf16ToUtf8(out, work);
+						str += (tjs_char)std::stol(out.c_str(), NULL, 16);
+#endif
 					}
 					break;
 				case 'x' :
 					{
+#if 1
 						ttstr work;
 						next(work, 2);
 						str += (tjs_char)wcstol(work.c_str(), NULL, 16);
+#else
+						tjs_string work;
+						next(work, 2);
+						std::string out;
+						TVPUtf16ToUtf8(out, work);
+						str += (tjs_char)std::stol(out.c_str(), NULL, 16);
+#endif
 					};
 					break;
 				default:
@@ -440,7 +502,11 @@ public:
 	 * 指定した文字が文字列の構成要素かどうか
 	 */
 	bool isString(int ch) {
+#if 1
 		return ch > 0x80 || ch > ' ' && wcschr(L",:]}/\\\"[{;=#", ch) == NULL;
+#else
+		return ch > 0x80 || ch > ' ' && TJS_strchr(TJS_W(",:]}/\\\"[{;=#"), ch) == NULL;
+#endif
 	}
 
 	/**
@@ -481,7 +547,11 @@ public:
 				// 数値
 				bool doubleValue = false;
 				
+#if 1
 				ttstr s;
+#else
+				tjs_string s;
+#endif
 				while (isNumber(ch)) {
 					if (ch == '.') {
 						doubleValue = true; // ひどい処理だ（笑)
@@ -491,12 +561,25 @@ public:
 				}
 				ungetc();
 
+#if 0
+				std::string out;
+				TVPUtf16ToUtf8(out, s);
+#endif
+
 				// 数値
 				if (doubleValue) {
+#if 1
 					double value = wcstod(s.c_str(), NULL);
+#else
+					double value = std::strtod(out.c_str(), NULL);
+#endif
 					var = value;
 				} else {
+#if 1
 					tjs_int64 value = _wcstoi64(s.c_str(), NULL, 0);
+#else
+					tjs_int64 value = std::strtoll(out.c_str(), NULL, 10);
+#endif
 					var = value;
 				}
 			}
@@ -513,21 +596,21 @@ public:
 				ungetc();
 				
 				// 識別子
-				if (s == L"true") {
+				if (s == TJS_W("true")) {
 					var = true;
-				} else if (s == L"false") {
+				} else if (s == TJS_W("false")) {
 					var = false;
-				} else if (s == L"null") {
+				} else if (s == TJS_W("null")) {
 					var.Clear();
-				} else if (s == L"void") {
+				} else if (s == TJS_W("void")) {
 					var.Clear();
 				} else {
-					ttstr msg = L"不明なキーワードです:";
+					ttstr msg = TJS_W("不明なキーワードです:");
 					msg += s;
 					error(msg.c_str());
 				}
 			} else {
-				ttstr msg = L"不明な文字です:";
+				ttstr msg = TJS_W("不明な文字です:");
 				error(msg.c_str());
 			}
 		}
@@ -615,6 +698,7 @@ public:
 	}
 };
 
+#if 1
 class IOctetReader : public IReader {
 	const tjs_uint8 *p;
 	tjs_uint length;
@@ -644,6 +728,7 @@ public:
 		}
 	}
 };
+#endif
 
 // -----------------------------------------------------------------
 
@@ -707,7 +792,7 @@ static tjs_error eval(IReader &file, tTJSVariant *result)
 	}
 	file.close();
 	if (file.isError) {
-		TVPThrowExceptionMessage(L"JSONファイル のパースに失敗しました");
+		TVPThrowExceptionMessage(TJS_W("JSONファイル のパースに失敗しました"));
 	}
 	return ret;
 }
@@ -730,6 +815,7 @@ public:
 		if (membername) return TJS_E_MEMBERNOTFOUND;
 		if (numparams < 1) return TJS_E_BADPARAMCOUNT;
 
+#if 1
 		if (param[0]->Type() == tvtOctet)
 		{
 			IOctetReader x(param[0]->AsOctetNoAddRef()->GetData(), param[0]->AsOctetNoAddRef()->GetLength());
@@ -739,6 +825,10 @@ public:
 
 		IStringReader x(param[0]->GetString());
 		eval(x, result);
+#else
+		IStringReader reader(param[0]->GetString());
+		eval(reader, result);
+#endif
 		return TJS_S_OK;
 	}
 };
@@ -761,10 +851,16 @@ public:
 
 		tTJSVariantString *filename = param[0]->AsStringNoAddRef();
 		bool utf8 = numparams >= 2 ? (int*)param[1] != 0 : false;
+
+#if 1
 		tjs_int codepage = utf8 ? CP_UTF8 : CP_ACP;
 
 		IFileReader x(filename, codepage);
 		eval(x, result);
+#else
+		IFileReader reader(filename, utf8);
+		eval(reader, result);
+#endif
 		return TJS_S_OK;
 	}
 };
@@ -778,30 +874,45 @@ quoteString(const tjs_char *str, IWriter *writer)
 		int ch;
 		while ((ch = *p++)) {
 			if (ch == '"') {
-				writer->write(L"\\\"");
+				writer->write(TJS_W("\\\""));
 			} else if (ch == '\\') {
-			  writer->write(L"\\\\");
+			  writer->write(TJS_W("\\\\"));
 			} else if (ch == 0x08) {
-			  writer->write(L"\\b");
+			  writer->write(TJS_W("\\b"));
 			} else if (ch == 0x0c) {
-			  writer->write(L"\\f");
+			  writer->write(TJS_W("\\f"));
 			} else if (ch == 0x0a) {
-			  writer->write(L"\\n");
+			  writer->write(TJS_W("\\n"));
 			} else if (ch == 0x0d) {
-			  writer->write(L"\\r");
+			  writer->write(TJS_W("\\r"));
 			} else if (ch == 0x09) {
-			  writer->write(L"\\t");
-			} else if (ch < 0x20 || ch >= 0x80) {
+			  writer->write(TJS_W("\\t"));
+			}
+#if 1
+			else if (ch < 0x20 || ch >= 0x80) {
 			  wchar_t buf[256];
 			  swprintf(buf, 255, L"\\u%04x", ch);
 			  writer->write(buf);
-			} else {
+			}
+#else
+			else if (ch < 0x20) {
+			  char buf[256];
+			  std::snprintf(buf, 255, "\\u%04x", ch);
+
+			  tjs_char wbuf[256];
+			  size_t l = TVPUtf8ToWideCharString(buf, wbuf);
+	          wbuf[l] = (tjs_char)'\0';
+
+			  writer->write(wbuf);
+			}
+#endif
+			else {
 				writer->write((tjs_char)ch);
 			}
 		}
 		writer->write((tjs_char)'"');
 	} else {
-		writer->write(L"\"\"");
+		writer->write(TJS_W("\"\""));
 	}
 }
 
@@ -890,15 +1001,15 @@ getVariantString(tTJSVariant &var, IWriter *writer)
 	switch(var.Type()) {
 
 	case tvtVoid:
-		writer->write(L"null");
+		writer->write(TJS_W("null"));
 		break;
 		
 	case tvtObject:
 		{
 			iTJSDispatch2 *obj = var.AsObjectNoAddRef();
 			if (obj == NULL) {
-				writer->write(L"null");
-			} else if (obj->IsInstanceOf(TJS_IGNOREPROP,NULL,NULL,L"Array",obj) == TJS_S_TRUE) {
+				writer->write(TJS_W("null"));
+			} else if (obj->IsInstanceOf(TJS_IGNOREPROP,NULL,NULL,TJS_W("Array"),obj) == TJS_S_TRUE) {
 				getArrayString(obj, writer);
 			} else {
 				getDictString(obj, writer);
@@ -926,7 +1037,7 @@ getVariantString(tTJSVariant &var, IWriter *writer)
 	}
 
 	default:
-		writer->write(L"null");
+		writer->write(TJS_W("null"));
 		break;
 	};
 }
@@ -972,6 +1083,33 @@ public:
 	}
 };
 
+
+void json_init()
+{
+	// Arary クラスメンバー取得
+	{
+		tTJSVariant varScripts;
+		TVPExecuteExpression(TJS_W("Array"), &varScripts);
+		iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
+		// メンバ取得
+		ArrayCountProp = getMember(dispatch, TJS_W("count"));
+	}
+
+	{
+		tTJSVariant varScripts;
+		TVPExecuteExpression(TJS_W("Scripts"), &varScripts);
+		iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
+		if (dispatch) {
+			addMethod(dispatch, TJS_W("evalJSON"),        new tEvalJSON());
+			addMethod(dispatch, TJS_W("evalJSONStorage"), new tEvalJSONStorage());
+			addMethod(dispatch, TJS_W("saveJSON"),        new tSaveJSON());
+			addMethod(dispatch, TJS_W("toJSONString"),    new tToJSONString());
+		}
+	}
+}
+
+#ifndef NO_V2LINK
+
 //---------------------------------------------------------------------------
 
 #pragma argsused
@@ -988,28 +1126,8 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Link(iTVPFunctionExporter *
 	// スタブの初期化(必ず記述する)
 	TVPInitImportStub(exporter);
 
+	json_init();
 
-	// Arary クラスメンバー取得
-	{
-		tTJSVariant varScripts;
-		TVPExecuteExpression(TJS_W("Array"), &varScripts);
-		iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
-		// メンバ取得
-		ArrayCountProp = getMember(dispatch, TJS_W("count"));
-	}
-
-	{
-		tTJSVariant varScripts;
-		TVPExecuteExpression(TJS_W("Scripts"), &varScripts);
-		iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
-		if (dispatch) {
-			addMethod(dispatch, L"evalJSON",        new tEvalJSON());
-			addMethod(dispatch, L"evalJSONStorage", new tEvalJSONStorage());
-			addMethod(dispatch, L"saveJSON",        new tSaveJSON());
-			addMethod(dispatch, L"toJSONString",    new tToJSONString());
-		}
-	}
-	
 	// この時点での TVPPluginGlobalRefCount の値を
 	GlobalRefCountAtInit = TVPPluginGlobalRefCount;
 	// として控えておく。TVPPluginGlobalRefCount はこのプラグイン内で
@@ -1021,17 +1139,9 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Link(iTVPFunctionExporter *
 	return S_OK;
 }
 //---------------------------------------------------------------------------
-extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
+static void TJS_USERENTRY tryUnlinkScripts(void *data)
 {
-	// 吉里吉里側から、プラグインを解放しようとするときに呼ばれる関数。
-
-	// もし何らかの条件でプラグインを解放できない場合は
-	// この時点で E_FAIL を返すようにする。
-	// ここでは、TVPPluginGlobalRefCount が GlobalRefCountAtInit よりも
-	// 大きくなっていれば失敗ということにする。
-	if(TVPPluginGlobalRefCount > GlobalRefCountAtInit) return E_FAIL;
-	// E_FAIL が帰ると、Plugins.unlink メソッドは偽を返す
-
+#if 1
 	iTJSDispatch2 *globalDispatch = TVPGetScriptDispatch();
 	if (globalDispatch)
 	{
@@ -1043,13 +1153,43 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
 		tTJSVariantClosure cloScripts = varScripts.AsObjectClosureNoAddRef();
 		if (cloScripts.Object)
 		{
-			delMethod(cloScripts.Object, L"evalJSON");
-			delMethod(cloScripts.Object, L"evalJSONStorage");
-			delMethod(cloScripts.Object, L"saveJSON");
-			delMethod(cloScripts.Object, L"toJSONString");
+			delMethod(cloScripts.Object, TJS_W("evalJSON"));
+			delMethod(cloScripts.Object, TJS_W("evalJSONStorage"));
+			delMethod(cloScripts.Object, TJS_W("saveJSON"));
+			delMethod(cloScripts.Object, TJS_W("toJSONString"));
 		}
 	}
+#else
+  tTJSVariant varScripts;
+  TVPExecuteExpression(TJS_W("Scripts"), &varScripts);
+  iTJSDispatch2 *dispatch = varScripts.AsObjectNoAddRef();
+  if (dispatch) {
+    delMethod(dispatch, TJS_W("evalJSON"));
+    delMethod(dispatch, TJS_W("evalJSONStorage"));
+  }
+#endif
+}
 
+static bool TJS_USERENTRY catchUnlinkScripts(void *data, const tTVPExceptionDesc & desc) {
+  return false;
+}
+
+
+extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
+{
+	// 吉里吉里側から、プラグインを解放しようとするときに呼ばれる関数。
+
+	// もし何らかの条件でプラグインを解放できない場合は
+	// この時点で E_FAIL を返すようにする。
+	// ここでは、TVPPluginGlobalRefCount が GlobalRefCountAtInit よりも
+	// 大きくなっていれば失敗ということにする。
+	if(TVPPluginGlobalRefCount > GlobalRefCountAtInit) return E_FAIL;
+	// E_FAIL が帰ると、Plugins.unlink メソッドは偽を返す
+
+	{
+          TVPDoTryBlock(&tryUnlinkScripts, &catchUnlinkScripts, NULL, NULL);
+	}
+	
 	if (ArrayCountProp) {
 		ArrayCountProp->Release();
 		ArrayCountProp = NULL;
@@ -1060,3 +1200,5 @@ extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
 
 	return S_OK;
 }
+
+#endif
