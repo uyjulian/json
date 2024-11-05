@@ -20,6 +20,27 @@ using namespace std;
 
 #define UNICODE_BOM (0xfeff)
 
+static bool TVPUtf16ToUtf8( std::string& out, const tjs_char *in ) {
+	tjs_int len = TVPWideCharToUtf8String( in, NULL );
+	if( len < 0 ) return false;
+	char* buf = new char[len];
+	if( buf ) {
+		try {
+			len = TVPWideCharToUtf8String( in, buf );
+			if( len > 0 ) out.assign( buf, len );
+			delete[] buf;
+		} catch(...) {
+			delete[] buf;
+			throw;
+		}
+	}
+	return len > 0;
+}
+
+static bool TVPUtf16ToUtf8( std::string& out, const tjs_string& in ) {
+	return TVPUtf16ToUtf8(out, in.c_str());
+}
+
 // ----------------------------------------------------------------------
 
 class IFileStorage  {
