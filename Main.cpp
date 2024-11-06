@@ -20,6 +20,7 @@ using namespace std;
 
 #define UNICODE_BOM (0xfeff)
 
+#if 0
 static bool TVPUtf16ToUtf8( std::string& out, const tjs_char *in ) {
 	tjs_int len = TVPWideCharToUtf8String( in, NULL );
 	if( len < 0 ) return false;
@@ -40,6 +41,7 @@ static bool TVPUtf16ToUtf8( std::string& out, const tjs_char *in ) {
 static bool TVPUtf16ToUtf8( std::string& out, const tjs_string& in ) {
 	return TVPUtf16ToUtf8(out, in.c_str());
 }
+#endif
 
 // ----------------------------------------------------------------------
 
