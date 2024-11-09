@@ -106,7 +106,7 @@ public:
 	 * コンストラクタ
 	 */
 	IFileWriter(const tjs_char *filename, bool utf=false, int newlinetype=0) : IWriter(newlinetype) {
-		stream = TVPCreateBinaryStreamInterfaceForWrite(filename, "");
+		stream = TVPCreateBinaryStreamForWrite(filename, "");
 		this->utf = utf;
 		dat = NULL;
 		datlen = 0;
