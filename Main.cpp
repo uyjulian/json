@@ -72,7 +72,7 @@ public:
 #if 1
 		in = TVPCreateIStream(filename, TJS_BS_READ);
 #else
-		in = TVPCreateBinaryStreamInterfaceForRead(filename, "");
+		in = TVPCreateStream(filename, TJS_BS_READ);
 #endif
 		if(!in) {
 			TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + *filename).c_str());

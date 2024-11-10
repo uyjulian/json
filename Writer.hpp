@@ -113,7 +113,7 @@ public:
 #if 1
 		stream = TVPCreateIStream(filename, TJS_BS_WRITE);
 #else
-		stream = TVPCreateBinaryStreamInterfaceForWrite(filename, "");
+		stream = TVPCreateStream(filename, TJS_BS_WRITE);
 #endif
 		this->utf = utf;
 		dat = NULL;
