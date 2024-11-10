@@ -54,7 +54,7 @@ class IFileStorage  {
 	
 public:
 	IFileStorage(tTJSVariantString *filename, bool utf8) : utf8(utf8) {
-		in = TVPCreateBinaryStreamForRead(filename, "");
+		in = TVPCreateStream(filename, TJS_BS_READ);
 		if(!in) {
 			TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + *filename).c_str());
 		}
