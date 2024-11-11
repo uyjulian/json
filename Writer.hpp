@@ -95,11 +95,7 @@ class IFileWriter : public IWriter {
 	/// 出力バッファ
 	ttstr buf;
 	/// 出力ストリーム
-#if 1
 	IStream *stream;
-#else
-	iTJSBinaryStream *stream;
-#endif
 	bool utf;
 	char *dat;
 	int datlen;
@@ -110,11 +106,7 @@ public:
 	 * コンストラクタ
 	 */
 	IFileWriter(const tjs_char *filename, bool utf=false, int newlinetype=0) : IWriter(newlinetype) {
-#if 1
 		stream = TVPCreateIStream(filename, TJS_BS_WRITE);
-#else
-		stream = TVPCreateStream(filename, TJS_BS_WRITE);
-#endif
 		this->utf = utf;
 		dat = NULL;
 		datlen = 0;
@@ -128,13 +120,9 @@ public:
 			if (buf.length() > 0) {
 				output();
 			}
-#if 1
 			stream->Commit(STGC_DEFAULT);
 			stream->Release();
-#else
-			//stream->Commit(STGC_DEFAULT);
-			stream->Destruct();
-#endif
+			stream = 0;
 		}
 		if (dat) {
 			free(dat);
@@ -153,11 +141,7 @@ public:
 				}
 				if (dat != NULL) {
 					int len = TVPWideCharToUtf8String(buf.c_str(), dat);
-#if 1
 					stream->Write(dat, len, &s);
-#else
-					s = stream->Write(dat, len);
-#endif
 				}
 			} else {
 				// 現在のコードページで出力
@@ -168,11 +152,7 @@ public:
 				}
 				if (dat != NULL) {
 					buf.ToNarrowStr(dat, len-1);
-#if 1
 					stream->Write(dat, len-1, &s);
-#else
-					s = stream->Write(dat, len-1);
-#endif
 				}
 			}
 		}

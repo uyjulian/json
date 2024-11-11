@@ -47,11 +47,7 @@ static bool TVPUtf16ToUtf8( std::string& out, const tjs_string& in ) {
 
 class IFileStorage  {
 
-#if 1
 	IStream *in;
-#else
-	iTJSBinaryStream *in;
-#endif
 	char buf[8192];
 	ULONG pos;
 	ULONG len;
@@ -69,11 +65,7 @@ public:
 	IFileStorage(tTJSVariantString *filename, bool utf8) : utf8(utf8)
 #endif
 	{
-#if 1
 		in = TVPCreateIStream(filename, TJS_BS_READ);
-#else
-		in = TVPCreateStream(filename, TJS_BS_READ);
-#endif
 		if(!in) {
 			TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + *filename).c_str());
 		}
@@ -84,11 +76,7 @@ public:
 
 	~IFileStorage() {
 		if (in) {
-#if 1
 			in->Release();
-#else
-			in->Destruct();
-#endif
 			in = NULL;
 		}
 	}
@@ -101,12 +89,7 @@ public:
 				return EOF;
 			} else {
 				pos = 0;
-#if 1
-				if (in->Read(buf, sizeof buf, &len) == S_OK)
-#else
-				if ((len = in->Read(buf, sizeof buf)) > 0)
-#endif
-				{
+				if (in->Read(buf, sizeof buf, &len) == S_OK && len > 0) {
 					eofFlag = len < sizeof buf;
 				} else {
 					eofFlag = true;
@@ -1131,20 +1114,32 @@ void json_init()
 	}
 }
 
-#ifndef NO_V2LINK
-
 //---------------------------------------------------------------------------
 
-#pragma argsused
-int WINAPI DllEntryPoint(HINSTANCE hinst, unsigned long reason,
-	void* lpReserved)
+#ifndef NO_V2LINK
+
+#define EXPORT(hr) extern "C" __declspec(dllexport) hr __stdcall
+
+#ifdef _MSC_VER
+# if defined(_M_AMD64) || defined(_M_X64)
+#  pragma comment(linker, "/EXPORT:V2Link")
+#  pragma comment(linker, "/EXPORT:V2Unlink")
+# else
+#pragma comment(linker, "/EXPORT:V2Link=_V2Link@4")
+#pragma comment(linker, "/EXPORT:V2Unlink=_V2Unlink@0")
+#endif
+#endif
+
+extern "C"
+int WINAPI DllEntryPoint(HINSTANCE hinst, unsigned long reason, void* lpReserved)
 {
 	return 1;
 }
 
 //---------------------------------------------------------------------------
 static tjs_int GlobalRefCountAtInit = 0;
-extern "C" __declspec(dllexport) HRESULT __stdcall V2Link(iTVPFunctionExporter *exporter)
+
+EXPORT(HRESULT) V2Link(iTVPFunctionExporter *exporter)
 {
 	// スタブの初期化(必ず記述する)
 	TVPInitImportStub(exporter);
@@ -1197,8 +1192,7 @@ static bool TJS_USERENTRY catchUnlinkScripts(void *data, const tTVPExceptionDesc
   return false;
 }
 
-
-extern "C" __declspec(dllexport) HRESULT __stdcall V2Unlink()
+EXPORT(HRESULT) V2Unlink()
 {
 	// 吉里吉里側から、プラグインを解放しようとするときに呼ばれる関数。
 
