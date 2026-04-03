@@ -1,20 +1,18 @@
 /**
  * copyright (c) 2007 Go Watanabe
  */
-
-#ifndef NO_V2LINK
+#ifdef _WIN32
 #include <windows.h>
-#else
-typedef unsigned long ULONG;
-
 #endif
-
-
 #include "tp_stub.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
 #include <algorithm>
+
+#ifndef _WIN32
+typedef unsigned long ULONG;
+#endif
 
 using namespace std;
 
@@ -47,7 +45,11 @@ static bool TVPUtf16ToUtf8( std::string& out, const tjs_string& in ) {
 
 class IFileStorage  {
 
+#if 1
 	IStream *in;
+#else
+	iTJSBinaryStream *in;
+#endif
 	char buf[8192];
 	ULONG pos;
 	ULONG len;
@@ -65,7 +67,11 @@ public:
 	IFileStorage(tTJSVariantString *filename, bool utf8) : utf8(utf8)
 #endif
 	{
+#if 1
 		in = TVPCreateIStream(filename, TJS_BS_READ);
+#else
+		in = TVPCreateStream(filename, TJS_BS_READ);
+#endif
 		if(!in) {
 			TVPThrowExceptionMessage((ttstr(TJS_W("cannot open : ")) + *filename).c_str());
 		}
@@ -76,7 +82,11 @@ public:
 
 	~IFileStorage() {
 		if (in) {
+#if 1
 			in->Release();
+#else
+			in->Destruct();
+#endif
 			in = NULL;
 		}
 	}
@@ -89,12 +99,21 @@ public:
 				return EOF;
 			} else {
 				pos = 0;
+#if 1
 				if (in->Read(buf, sizeof buf, &len) == S_OK && len > 0) {
 					eofFlag = len < sizeof buf;
 				} else {
 					eofFlag = true;
 					len = 0;
 				}
+#else
+				if ((len = in->Read(buf, sizeof buf)) > 0) {
+					eofFlag = len < sizeof buf;
+				} else {
+					eofFlag = true;
+					len = 0;
+				}
+#endif
 				return getc();
 			}
 		}
@@ -1116,17 +1135,43 @@ void json_init()
 
 //---------------------------------------------------------------------------
 
-#ifndef NO_V2LINK
+#ifndef STDCALL
+#define STDCALL __stdcall
+#endif
 
-#define EXPORT(hr) extern "C" __declspec(dllexport) hr __stdcall
+#ifdef TVP_STATIC_PLUGIN
+
+#define EXPORT(hr) static hr STDCALL
+
+#else
+
+#if defined(_MSC_VER)
+    #define DLL_EXPORT  __declspec(dllexport)
+#else
+	#define DLL_EXPORT  __attribute__((visibility("default")))
+#endif
+
+#define EXPORT(hr) extern "C" DLL_EXPORT hr STDCALL
+
+#ifdef _WIN32
 
 #ifdef _MSC_VER
 # if defined(_M_AMD64) || defined(_M_X64)
 #  pragma comment(linker, "/EXPORT:V2Link")
 #  pragma comment(linker, "/EXPORT:V2Unlink")
 # else
-#pragma comment(linker, "/EXPORT:V2Link=_V2Link@4")
-#pragma comment(linker, "/EXPORT:V2Unlink=_V2Unlink@0")
+#  pragma comment(linker, "/EXPORT:V2Link=_V2Link@4")
+#  pragma comment(linker, "/EXPORT:V2Unlink=_V2Unlink@0")
+# endif
+#endif
+#if 0
+#ifdef __GNUC__
+asm (".section .drectve");
+# if defined(__x86_64__) || defined(__x86_64)
+asm (".ascii \" -export:V2Link=V2Link -export:V2Unlink=V2Unlink\"");
+# else
+asm (".ascii \" -export:V2Link=V2Link@4 -export:V2Unlink=V2Unlink@0\"");
+# endif
 #endif
 #endif
 
@@ -1135,6 +1180,9 @@ int WINAPI DllEntryPoint(HINSTANCE hinst, unsigned long reason, void* lpReserved
 {
 	return 1;
 }
+#endif
+
+#endif
 
 //---------------------------------------------------------------------------
 static tjs_int GlobalRefCountAtInit = 0;
@@ -1216,6 +1264,30 @@ EXPORT(HRESULT) V2Unlink()
 	TVPUninitImportStub();
 
 	return S_OK;
+}
+
+#ifdef TVP_STATIC_PLUGIN
+
+#if defined(_MSC_VER)
+    #define EXPORT_USED __declspec(dllexport)
+#else
+	#define EXPORT_USED __attribute__((visibility("default"), used))
+#endif
+
+#define str(x) TJS_W(#x)
+#define strx(x) str(x)
+#define CAT(a, b) a##b
+#define XCAT(a, b) CAT(a, b)
+#define MAKE_FUNC(name) XCAT(krkrz_plugin_, name)
+
+// リンク用エントリ関数
+// _krkrz_plugin_プロジェクト名 で関数が作られる
+extern "C" EXPORT_USED void STDCALL MAKE_FUNC(TVP_PLUGIN_NAME)() {
+	static iTVPStaticPlugin plugin;
+    plugin.name = strx(TVP_PLUGIN_NAME);
+	plugin.link = (int32_t (STDCALL *)(iTVPFunctionExporter *))V2Link;
+	plugin.unlink = (int32_t (STDCALL *)(void))V2Unlink;
+	TVPRegisterPlugin(&plugin);
 }
 
 #endif
